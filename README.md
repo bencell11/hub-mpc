@@ -1,36 +1,140 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hub MCP Local
 
-## Getting Started
+Hub central de gestion de projet assisté par IA. Connectez vos outils, indexez vos contenus et laissez l'IA vous aider à retrouver, comprendre et agir sur toutes les informations de vos projets.
 
-First, run the development server:
+## Fonctionnalités
+
+- **Gestion de projets** - Organisez documents, emails, réunions et tâches
+- **Connecteurs** - Gmail, Telegram, calendriers, fichiers locaux
+- **Assistant IA** - Chat intelligent avec recherche sémantique et citations
+- **Transcription audio** - Conversion audio vers texte avec Whisper
+- **Résumés automatiques** - Extraction de décisions et actions
+- **Gouvernance** - Permissions, confirmations, audit complet
+
+## Démarrage rapide
+
+### Prérequis
+
+- Node.js 18+
+- Redis (pour les jobs en arrière-plan)
+- Compte Supabase
+- Clé API OpenAI
+
+### Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Cloner le projet
+git clone <repository-url>
+cd hub-mcp
+
+# Installer les dépendances
+npm install
+
+# Copier la configuration
+cp .env.example .env.local
+# Éditer .env.local avec vos clés
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Configuration Supabase
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Créer un projet sur [supabase.com](https://supabase.com)
+2. Exécuter le fichier `supabase/migrations/0001_initial_schema.sql`
+3. Activer l'extension `vector` dans les paramètres SQL
+4. Copier les clés dans `.env.local`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Lancement
 
-## Learn More
+```bash
+# Terminal 1 - Application Next.js
+npm run dev
 
-To learn more about Next.js, take a look at the following resources:
+# Terminal 2 - Worker de jobs (optionnel, pour traitement des fichiers)
+npx tsx src/lib/jobs/worker.ts
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Ouvrir [http://localhost:3000](http://localhost:3000)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architecture
 
-## Deploy on Vercel
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Frontend                              │
+│                    Next.js 15 + React                        │
+├─────────────────────────────────────────────────────────────┤
+│  Dashboard  │  Assistant Chat  │  Projets  │  Connecteurs   │
+├─────────────┴──────────────────┴───────────┴────────────────┤
+│                       API Routes                             │
+│             /api/chat    /api/tools    /api/upload          │
+├─────────────────────────────────────────────────────────────┤
+│                    Tool Registry                             │
+│  add_note │ create_task │ search_emails │ semantic_search  │
+├─────────────────────────────────────────────────────────────┤
+│                    Policy Engine                             │
+│         Permissions │ Confirmations │ Quotas │ Audit        │
+├─────────────────────────────────────────────────────────────┤
+│                    Connectors                                │
+│              Email │ Telegram │ Calendar │ Storage          │
+├─────────────────────────────────────────────────────────────┤
+│                  Job Queue (BullMQ)                          │
+│   Documents │ Audio/Transcription │ Embeddings │ Summaries  │
+├─────────────────────────────────────────────────────────────┤
+│                     Supabase                                 │
+│        PostgreSQL + pgvector + Storage + Auth + RLS         │
+└─────────────────────────────────────────────────────────────┘
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Stack technique
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Composant | Technologie |
+|-----------|-------------|
+| Frontend | Next.js 15, React 19, TailwindCSS |
+| Backend | Next.js API Routes |
+| Base de données | Supabase (PostgreSQL + pgvector) |
+| Authentification | Supabase Auth |
+| Stockage | Supabase Storage |
+| Jobs | BullMQ + Redis |
+| LLM | OpenAI GPT-4o |
+| Transcription | OpenAI Whisper |
+| Embeddings | OpenAI text-embedding-3-small |
+
+## Critères d'acceptation MVP
+
+- [x] Créer un projet et importer des documents
+- [x] Connecter un email et retrouver une info avec citation
+- [x] Ajouter une note et la retrouver via chat
+- [x] Importer un audio, obtenir transcription + résumé + actions
+- [x] Exporter un compte rendu (MD)
+- [x] Envoyer un message Telegram avec confirmation
+- [x] Journalisation complète (tool calls + audit)
+
+## Commandes
+
+```bash
+npm run dev          # Développement
+npm run build        # Build production
+npm run start        # Production
+npm run lint         # Linting
+```
+
+## Variables d'environnement
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+OPENAI_API_KEY=
+REDIS_URL=redis://localhost:6379
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+## Sécurité
+
+- Row Level Security (RLS) sur toutes les tables
+- Multi-tenant avec isolation par workspace
+- Confirmation obligatoire pour actions externes
+- Audit log complet de toutes les actions
+- Chiffrement des credentials des connecteurs
+
+## Licence
+
+MIT
