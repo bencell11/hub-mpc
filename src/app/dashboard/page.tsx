@@ -35,6 +35,7 @@ export default async function DashboardPage() {
     if (!authUser) {
       const { redirect } = await import('next/navigation')
       redirect('/auth/login')
+      return // TypeScript: unreachable mais nécessaire pour le type narrowing
     }
 
     user = { id: authUser.id, email: authUser.email || '', name: authUser.email || 'Utilisateur' }

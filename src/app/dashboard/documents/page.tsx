@@ -336,7 +336,9 @@ export default function DocumentsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium truncate">{doc.name}</h3>
                         {doc.isIndexed && (
-                          <CheckCircle2 className="h-4 w-4 text-green-500" title="Indexé pour l'IA" />
+                          <span title="Indexé pour l'IA">
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          </span>
                         )}
                         {doc.hasTranscription && (
                           <Badge variant="secondary" className="text-xs">Transcrit</Badge>

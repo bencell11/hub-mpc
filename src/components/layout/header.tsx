@@ -3,7 +3,7 @@
 import { Bell, Search, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar } from '@/components/ui/avatar'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 
 interface HeaderProps {
   user?: {
@@ -39,13 +39,10 @@ export function Header({ user }: HeaderProps) {
           <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />
         </Button>
 
-        <Avatar
-          src={user?.avatarUrl}
-          fallback={user?.name || 'U'}
-          alt={user?.name}
-          size="md"
-          className="cursor-pointer"
-        />
+        <Avatar size="md" className="cursor-pointer">
+          {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user?.name} />}
+          <AvatarFallback>{user?.name?.charAt(0) || 'U'}</AvatarFallback>
+        </Avatar>
       </div>
     </header>
   )

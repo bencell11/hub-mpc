@@ -28,7 +28,7 @@ const navigation = [
 ]
 
 const secondaryNavigation = [
-  { name: 'Connecteurs', href: '/dashboard/connectors', icon: Plug },
+  { name: 'Connecteurs', href: '/dashboard/settings/connectors', icon: Plug },
   { name: 'Paramètres', href: '/dashboard/settings', icon: Settings },
 ]
 

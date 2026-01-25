@@ -1,0 +1,32 @@
+# Hub MCP - Dockerfile pour le Worker BullMQ
+# Exécute les jobs de traitement asynchrone
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Installer les dépendances système nécessaires
+RUN apk add --no-cache libc6-compat
+
+# Copier les fichiers de dépendances
+COPY package.json package-lock.json* ./
+
+# Installer les dépendances
+RUN npm ci
+
+# Copier le code source
+COPY . .
+
+# Compiler TypeScript si nécessaire
+RUN npm run build || true
+
+# Créer un utilisateur non-root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+USER worker
+
+# Variables d'environnement par défaut
+ENV NODE_ENV=production
+
+# Commande pour lancer le worker
+CMD ["npx", "tsx", "src/lib/jobs/worker.ts"]

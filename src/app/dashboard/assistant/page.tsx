@@ -29,10 +29,11 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  Plus
+  Plus,
+  WifiOff
 } from 'lucide-react'
 
-// DEV MODE: Mock data
+// DEV MODE: Mock user (à remplacer par auth réelle)
 const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Message {
@@ -43,6 +44,7 @@ interface Message {
   citations?: Citation[]
   toolCalls?: ToolCall[]
   pendingConfirmation?: PendingAction
+  error?: boolean
 }
 
 interface Citation {
@@ -51,12 +53,14 @@ interface Citation {
   title: string
   excerpt: string
   source: string
+  sourceId?: string
 }
 
 interface ToolCall {
   name: string
   status: 'pending' | 'executed' | 'failed'
   result?: string
+  arguments?: Record<string, unknown>
 }
 
 interface PendingAction {
@@ -65,44 +69,38 @@ interface PendingAction {
   risk: 'low' | 'medium' | 'high'
 }
 
+// Types pour l'API
+interface ChatApiResponse {
+  content: string
+  citations?: Array<{
+    id: string
+    sourceType: 'document' | 'email' | 'meeting' | 'note'
+    sourceId: string
+    title: string
+    excerpt: string
+  }>
+  toolCalls?: Array<{
+    name: string
+    arguments: Record<string, unknown>
+    result?: unknown
+  }>
+  error?: string
+}
+
 const INITIAL_MESSAGES: Message[] = [
   {
     id: '1',
     role: 'assistant',
-    content: 'Bonjour ! Je suis votre assistant Hub MCP. Je peux vous aider à rechercher des informations dans vos projets, emails, documents et réunions. Je peux également exécuter des actions comme envoyer des emails ou créer des tâches.\n\nQue puis-je faire pour vous aujourd\'hui ?',
+    content: 'Bonjour ! Je suis votre assistant Hub MCP. Je peux vous aider à rechercher des informations dans vos projets, emails, documents et réunions. Je peux également exécuter des actions comme créer des notes ou des tâches.\n\nQue puis-je faire pour vous aujourd\'hui ?',
     timestamp: new Date(Date.now() - 60000),
   },
 ]
 
 const SUGGESTED_PROMPTS = [
-  { icon: Search, text: 'Quel est l\'état d\'avancement du projet Haussmann ?' },
-  { icon: Mail, text: 'Résume les derniers emails de Jean Dupont' },
+  { icon: Search, text: 'Recherche les documents liés au projet en cours' },
+  { icon: Mail, text: 'Résume les derniers emails importants' },
   { icon: Calendar, text: 'Quelles sont les prochaines réunions prévues ?' },
-  { icon: FileText, text: 'Trouve les devis en attente de validation' },
-]
-
-const MOCK_CITATIONS: Citation[] = [
-  {
-    id: '1',
-    type: 'email',
-    title: 'RE: Plans révisés appartement Haussmann',
-    excerpt: 'Le client a validé les modifications de la cuisine...',
-    source: 'Jean Dupont - il y a 2 jours',
-  },
-  {
-    id: '2',
-    type: 'document',
-    title: 'Compte-rendu réunion chantier',
-    excerpt: 'Avancement travaux : 65% - Prochaine étape : pose menuiseries',
-    source: 'Réunion du 15/01/2024',
-  },
-  {
-    id: '3',
-    type: 'meeting',
-    title: 'Point hebdomadaire client',
-    excerpt: 'Discussion sur les choix de revêtements...',
-    source: 'Réunion du 12/01/2024',
-  },
+  { icon: FileText, text: 'Crée une note de suivi pour le projet' },
 ]
 
 const typeIcons = {
@@ -123,6 +121,7 @@ export default function AssistantPage() {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isConnected, setIsConnected] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -134,6 +133,16 @@ export default function AssistantPage() {
     scrollToBottom()
   }, [messages])
 
+  // Convertir les messages au format API
+  const messagesToApiFormat = (msgs: Message[]) => {
+    return msgs
+      .filter(m => m.id !== '1') // Exclure le message initial de bienvenue
+      .map(m => ({
+        role: m.role,
+        content: m.content,
+      }))
+  }
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
 
@@ -144,101 +153,76 @@ export default function AssistantPage() {
       timestamp: new Date(),
     }
 
-    setMessages(prev => [...prev, userMessage])
+    const updatedMessages = [...messages, userMessage]
+    setMessages(updatedMessages)
     setInput('')
     setIsLoading(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: messagesToApiFormat(updatedMessages),
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Erreur ${response.status}`)
+      }
+
+      const data: ChatApiResponse = await response.json()
+      setIsConnected(true)
+
+      // Transformer les citations de l'API au format local
+      const citations: Citation[] = (data.citations || []).map((c, i) => ({
+        id: c.id || `citation-${i}`,
+        type: c.sourceType,
+        title: c.title,
+        excerpt: c.excerpt,
+        source: `${c.sourceType} - ${c.sourceId}`,
+        sourceId: c.sourceId,
+      }))
+
+      // Transformer les tool calls
+      const toolCalls: ToolCall[] = (data.toolCalls || []).map(tc => ({
+        name: tc.name,
+        status: 'executed' as const,
+        result: typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result),
+        arguments: tc.arguments,
+      }))
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: generateMockResponse(input),
+        content: data.content,
         timestamp: new Date(),
-        citations: input.toLowerCase().includes('projet') || input.toLowerCase().includes('haussmann')
-          ? MOCK_CITATIONS
-          : undefined,
-        toolCalls: input.toLowerCase().includes('email') || input.toLowerCase().includes('envoie')
-          ? [{ name: 'send_email', status: 'pending' }]
-          : undefined,
-        pendingConfirmation: input.toLowerCase().includes('envoie')
-          ? {
-            type: 'send_email',
-            description: 'Envoyer un email à Jean Dupont',
-            risk: 'medium'
-          }
-          : undefined,
+        citations: citations.length > 0 ? citations : undefined,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       }
+
       setMessages(prev => [...prev, assistantMessage])
+    } catch (error) {
+      console.error('Chat error:', error)
+      setIsConnected(false)
+
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: error instanceof Error
+          ? `Désolé, une erreur s'est produite : ${error.message}\n\nVérifiez que vous êtes connecté et réessayez.`
+          : 'Désolé, une erreur s\'est produite. Veuillez réessayer.',
+        timestamp: new Date(),
+        error: true,
+      }
+
+      setMessages(prev => [...prev, errorMessage])
+    } finally {
       setIsLoading(false)
-    }, 1500)
-  }
-
-  const generateMockResponse = (query: string): string => {
-    if (query.toLowerCase().includes('avancement') || query.toLowerCase().includes('haussmann')) {
-      return `**Projet Rénovation Appartement Haussmann - État d'avancement**
-
-📊 **Progression globale : 65%**
-
-**Travaux terminés :**
-- Démolition et gros œuvre ✅
-- Électricité (passage câbles) ✅
-- Plomberie (réseaux) ✅
-
-**En cours :**
-- Pose des menuiseries intérieures (prévu semaine prochaine)
-- Finitions plâtrerie
-
-**À venir :**
-- Peinture
-- Pose carrelage cuisine et SDB
-- Installation cuisine
-
-**Prochaine réunion de chantier :** Demain à 10h00
-
-Le client a validé les derniers choix de matériaux pour la cuisine lors de notre dernier échange.`
     }
-
-    if (query.toLowerCase().includes('email') || query.toLowerCase().includes('dupont')) {
-      return `Voici un résumé des **3 derniers emails de Jean Dupont** :
-
-1. **Aujourd'hui** - "RE: Plans révisés appartement"
-   → Validation des plans avec remarques mineures sur la cuisine
-
-2. **Il y a 2 jours** - "Question matériaux salle de bain"
-   → Demande de précisions sur les options de carrelage
-
-3. **Il y a 5 jours** - "Planning travaux"
-   → Confirmation de disponibilité pour la réunion de chantier
-
-*Souhaitez-vous que je vous aide à rédiger une réponse ?*`
-    }
-
-    if (query.toLowerCase().includes('réunion') || query.toLowerCase().includes('prochaine')) {
-      return `**Prochaines réunions prévues :**
-
-📅 **Demain - 10h00**
-Réunion de chantier - Appartement Haussmann
-📍 15 Avenue Montaigne, Paris 8e
-
-📅 **Jeudi - 14h30**
-Point hebdomadaire - TechCorp
-💻 Google Meet
-
-📅 **Vendredi - 11h00**
-Validation matériaux - Villa Côte d'Azur
-💻 Zoom
-
-*Voulez-vous que j'ajoute une réunion au planning ?*`
-    }
-
-    return `J'ai bien compris votre demande. Je recherche dans vos projets, emails et documents...
-
-Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte sur :
-- Le projet concerné
-- La période de temps
-
-*Vous pouvez aussi utiliser les suggestions ci-dessous pour des recherches rapides.*`
   }
 
   const handleConfirmAction = (messageId: string, confirmed: boolean) => {
@@ -250,12 +234,22 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
           toolCalls: msg.toolCalls?.map(tc => ({
             ...tc,
             status: confirmed ? 'executed' as const : 'failed' as const,
-            result: confirmed ? 'Email envoyé avec succès' : 'Action annulée'
+            result: confirmed ? 'Action exécutée avec succès' : 'Action annulée'
           }))
         }
       }
       return msg
     }))
+  }
+
+  const handleRetry = () => {
+    // Retirer le dernier message d'erreur et le dernier message utilisateur
+    const lastUserMessageIndex = messages.findLastIndex(m => m.role === 'user')
+    if (lastUserMessageIndex > 0) {
+      const userInput = messages[lastUserMessageIndex].content
+      setMessages(prev => prev.slice(0, lastUserMessageIndex))
+      setInput(userInput)
+    }
   }
 
   return (
@@ -273,8 +267,18 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                   </div>
                   <div>
                     <CardTitle className="text-lg">Assistant Hub MCP</CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      Recherche sémantique - Actions automatisées
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      {isConnected ? (
+                        <>
+                          <span className="h-2 w-2 rounded-full bg-green-500" />
+                          Connecté - GPT-4o
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="h-3 w-3 text-red-500" />
+                          <span className="text-red-500">Déconnecté</span>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -298,7 +302,7 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                 >
                   {message.role === 'assistant' && (
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
+                      <AvatarFallback className={`${message.error ? 'bg-red-500' : 'bg-primary'} text-primary-foreground`}>
                         <Bot className="h-4 w-4" />
                       </AvatarFallback>
                     </Avatar>
@@ -308,7 +312,9 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                     <div
                       className={`rounded-lg p-4 ${message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
+                        : message.error
+                          ? 'bg-red-50 border border-red-200'
+                          : 'bg-muted'
                         }`}
                     >
                       <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">
@@ -339,6 +345,31 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+
+                    {/* Tool calls executed */}
+                    {message.toolCalls && message.toolCalls.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Actions exécutées :</p>
+                        {message.toolCalls.map((tc, i) => (
+                          <div
+                            key={i}
+                            className={`flex items-center gap-2 text-sm p-2 rounded border ${
+                              tc.status === 'executed'
+                                ? 'bg-green-50 border-green-200 text-green-700'
+                                : 'bg-red-50 border-red-200 text-red-700'
+                            }`}
+                          >
+                            {tc.status === 'executed' ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4" />
+                            )}
+                            <span className="font-medium">{tc.name}</span>
+                            {tc.result && <span className="text-xs">- {tc.result}</span>}
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -376,26 +407,6 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                       </div>
                     )}
 
-                    {/* Tool call results */}
-                    {message.toolCalls?.some(tc => tc.status !== 'pending') && (
-                      <div className="mt-2">
-                        {message.toolCalls.map((tc, i) => (
-                          <div
-                            key={i}
-                            className={`flex items-center gap-2 text-sm ${tc.status === 'executed' ? 'text-green-600' : 'text-red-600'
-                              }`}
-                          >
-                            {tc.status === 'executed' ? (
-                              <CheckCircle2 className="h-4 w-4" />
-                            ) : (
-                              <AlertCircle className="h-4 w-4" />
-                            )}
-                            <span>{tc.result}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Message actions */}
                     {message.role === 'assistant' && (
                       <div className="flex items-center gap-1 mt-2">
@@ -408,9 +419,16 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                           <ThumbsDown className="h-3 w-3" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
+                        {message.error && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={handleRetry}
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -433,7 +451,7 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                   <div className="bg-muted rounded-lg p-4">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-muted-foreground">Recherche en cours...</span>
+                      <span className="text-sm text-muted-foreground">L'assistant réfléchit...</span>
                     </div>
                   </div>
                 </div>
@@ -469,7 +487,7 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
             {/* Input */}
             <div className="border-t p-4">
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" disabled>
                   <Paperclip className="h-4 w-4" />
                 </Button>
                 <Input
@@ -479,8 +497,9 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
                   className="flex-1"
+                  disabled={isLoading}
                 />
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" disabled>
                   <Mic className="h-4 w-4" />
                 </Button>
                 <Button onClick={handleSend} disabled={!input.trim() || isLoading}>
@@ -488,7 +507,7 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground text-center mt-2">
-                L'assistant recherche dans vos documents, emails et réunions
+                L'assistant utilise GPT-4o et recherche dans vos documents indexés
               </p>
             </div>
           </Card>
@@ -505,47 +524,61 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
               </CardTitle>
             </CardHeader>
             <CardContent className="py-0 pb-3 space-y-1">
-              <Button variant="ghost" className="w-full justify-start text-sm h-9">
-                <Mail className="mr-2 h-4 w-4" />
-                Rédiger un email
-              </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm h-9">
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sm h-9"
+                onClick={() => setInput('Crée une note de suivi pour ce projet')}
+              >
                 <FileText className="mr-2 h-4 w-4" />
-                Résumer un document
+                Créer une note
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm h-9">
-                <Calendar className="mr-2 h-4 w-4" />
-                Planifier une réunion
-              </Button>
-              <Button variant="ghost" className="w-full justify-start text-sm h-9">
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sm h-9"
+                onClick={() => setInput('Crée une tâche pour le suivi du projet')}
+              >
                 <FolderKanban className="mr-2 h-4 w-4" />
-                État d'un projet
+                Créer une tâche
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sm h-9"
+                onClick={() => setInput('Recherche les documents importants du projet')}
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Rechercher
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sm h-9"
+                onClick={() => setInput('Résume les derniers emails du projet')}
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Résumer emails
               </Button>
             </CardContent>
           </Card>
 
-          {/* Context */}
+          {/* Connection status */}
           <Card>
             <CardHeader className="py-3">
-              <CardTitle className="text-sm">Contexte actuel</CardTitle>
+              <CardTitle className="text-sm">État du système</CardTitle>
             </CardHeader>
             <CardContent className="py-0 pb-3">
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Projet</span>
-                  <Badge variant="outline">Tous</Badge>
+                  <span className="text-muted-foreground">API Chat</span>
+                  <Badge variant={isConnected ? "default" : "destructive"}>
+                    {isConnected ? 'Connecté' : 'Erreur'}
+                  </Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Documents indexés</span>
-                  <span className="font-medium">156</span>
+                  <span className="text-muted-foreground">Modèle</span>
+                  <span className="font-medium">GPT-4o</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Emails analysés</span>
-                  <span className="font-medium">1,247</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Réunions</span>
-                  <span className="font-medium">45</span>
+                  <span className="text-muted-foreground">Outils</span>
+                  <span className="font-medium">5 actifs</span>
                 </div>
               </div>
             </CardContent>
@@ -562,12 +595,9 @@ Pour vous donner une réponse précise, pourriez-vous me donner plus de contexte
               </div>
             </CardHeader>
             <CardContent className="py-0 pb-3 space-y-1">
-              {['Avancement Haussmann', 'Devis menuiserie', 'Planning TechCorp'].map((conv, i) => (
-                <Button key={i} variant="ghost" className="w-full justify-start text-sm h-9">
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  <span className="truncate">{conv}</span>
-                </Button>
-              ))}
+              <p className="text-xs text-muted-foreground text-center py-2">
+                L'historique des conversations sera disponible prochainement
+              </p>
             </CardContent>
           </Card>
         </div>

@@ -1,0 +1,66 @@
+# Hub MCP - Docker Compose Configuration
+# Lance l'application Next.js, Redis et le worker BullMQ
+
+version: '3.8'
+
+services:
+  # Application Next.js
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env.local
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - hub-network
+
+  # Worker BullMQ pour le traitement des jobs
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - .env.local
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - hub-network
+    # Permet de scaler le nombre de workers
+    deploy:
+      replicas: 1
+
+  # Redis pour BullMQ
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - hub-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  hub-network:
+    driver: bridge
+
+volumes:
+  redis-data:
