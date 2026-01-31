@@ -1,5 +1,6 @@
 import type { ToolDefinition, ToolContext, ToolResult, RiskLevel } from '@/types/tools'
 import { createServiceClient } from '@/lib/supabase/server'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 
 // Tool registry - singleton pattern
 class ToolRegistry {
@@ -46,57 +47,23 @@ class ToolRegistry {
       parameters: Record<string, unknown>
     }
   }> {
-    return this.getAll().map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: this.zodToJsonSchema(tool.inputSchema),
-      },
-    }))
-  }
+    return this.getAll().map(tool => {
+      // Use zod-to-json-schema for proper conversion
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const jsonSchema = zodToJsonSchema(tool.inputSchema as any, { target: 'openApi3' })
 
-  // Simple zod to JSON schema converter
-  private zodToJsonSchema(schema: unknown): Record<string, unknown> {
-    // This is a simplified version - in production, use zod-to-json-schema
-    if (schema && typeof schema === 'object' && '_def' in schema) {
-      const def = (schema as { _def: { typeName: string; shape?: () => Record<string, unknown> } })._def
-      if (def.typeName === 'ZodObject' && def.shape) {
-        const shape = def.shape()
-        const properties: Record<string, unknown> = {}
-        const required: string[] = []
+      // Remove $schema and other OpenAPI-specific fields that OpenAI doesn't need
+      const { $schema, ...parameters } = jsonSchema as Record<string, unknown>
 
-        for (const [key, value] of Object.entries(shape)) {
-          properties[key] = this.zodToJsonSchema(value)
-          const valueDef = (value as { _def?: { typeName: string } })._def
-          if (valueDef && valueDef.typeName !== 'ZodOptional') {
-            required.push(key)
-          }
-        }
-
-        return {
-          type: 'object',
-          properties,
-          required: required.length > 0 ? required : undefined,
-        }
+      return {
+        type: 'function' as const,
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters,
+        },
       }
-      if (def.typeName === 'ZodString') {
-        return { type: 'string' }
-      }
-      if (def.typeName === 'ZodNumber') {
-        return { type: 'number' }
-      }
-      if (def.typeName === 'ZodBoolean') {
-        return { type: 'boolean' }
-      }
-      if (def.typeName === 'ZodArray') {
-        return {
-          type: 'array',
-          items: this.zodToJsonSchema((def as { type?: unknown }).type),
-        }
-      }
-    }
-    return { type: 'string' }
+    })
   }
 }
 
