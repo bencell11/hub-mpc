@@ -29,11 +29,16 @@ export async function POST(
     }
 
     // Get meeting to verify access
-    const { data: meeting } = await serviceClient
+    const { data: meeting, error: meetingError } = await serviceClient
       .from('meetings')
-      .select('id, project_id, projects!inner(workspace_id)')
+      .select('id, project_id')
       .eq('id', id)
       .single()
+
+    if (meetingError) {
+      console.error('Meeting fetch error:', meetingError)
+      return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
+    }
 
     if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
@@ -51,19 +56,47 @@ export async function POST(
     // Generate storage path
     const timestamp = Date.now()
     const extension = audioFile.name.split('.').pop() || 'webm'
-    const storagePath = `meetings/${id}/${timestamp}.${extension}`
+    const storagePath = `audio/meetings/${id}/${timestamp}.${extension}`
 
-    // Upload to Supabase Storage
+    // Convert File to ArrayBuffer for upload
+    const arrayBuffer = await audioFile.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // Upload to Supabase Storage - use 'documents' bucket which should exist
     const { error: uploadError } = await serviceClient.storage
-      .from('audio')
-      .upload(storagePath, audioFile, {
+      .from('documents')
+      .upload(storagePath, buffer, {
         contentType: audioFile.type || 'audio/webm',
         upsert: true,
       })
 
     if (uploadError) {
       console.error('Audio upload error:', uploadError)
-      return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 })
+      // Try to create the bucket if it doesn't exist
+      if (uploadError.message.includes('not found') || uploadError.message.includes('Bucket')) {
+        // Try creating the bucket
+        const { error: createBucketError } = await serviceClient.storage.createBucket('documents', {
+          public: false,
+        })
+        if (createBucketError && !createBucketError.message.includes('already exists')) {
+          console.error('Bucket creation error:', createBucketError)
+        }
+
+        // Retry upload
+        const { error: retryError } = await serviceClient.storage
+          .from('documents')
+          .upload(storagePath, buffer, {
+            contentType: audioFile.type || 'audio/webm',
+            upsert: true,
+          })
+
+        if (retryError) {
+          console.error('Audio upload retry error:', retryError)
+          return NextResponse.json({ error: 'Upload failed: ' + retryError.message }, { status: 500 })
+        }
+      } else {
+        return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 })
+      }
     }
 
     // Update meeting with audio path and duration
@@ -163,8 +196,9 @@ export async function GET(
     }
 
     // Generate signed URL for audio playback
+    // Audio is stored in 'documents' bucket with path like 'audio/meetings/{id}/...'
     const { data: signedUrl, error } = await serviceClient.storage
-      .from('audio')
+      .from('documents')
       .createSignedUrl(meeting.audio_path, 3600) // 1 hour expiry
 
     if (error) {
