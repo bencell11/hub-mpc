@@ -28,58 +28,84 @@ export async function GET(
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Get meeting with all related data
+    // Get meeting with project info
     const { data: meeting, error } = await serviceClient
       .from('meetings')
       .select(`
         *,
-        project:projects(id, name, workspace_id),
-        summaries(id, content, format, created_at),
-        decisions(id, content, status, created_at),
-        tasks(id, title, status, priority, due_date, assignee_id)
+        project:projects(id, name, workspace_id)
       `)
       .eq('id', id)
       .single()
 
-    if (error || !meeting) {
+    if (error) {
+      console.error('Meeting fetch error:', error)
+      return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
+    }
+
+    if (!meeting) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
     }
 
     // Verify workspace access
-    if (meeting.project?.workspace_id !== membership.workspace_id) {
+    const projectData = meeting.project as { id: string; name: string; workspace_id: string } | null
+    if (projectData?.workspace_id !== membership.workspace_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
-    // Get ingestion job status if processing
-    const { data: ingestionJob } = await serviceClient
-      .from('ingestion_jobs')
-      .select('id, status, error_message, created_at, updated_at')
-      .eq('source_type', 'meeting')
-      .eq('source_id', id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    // Fetch related data separately (no FK relations)
+    const [summaryResult, decisionsResult, tasksResult, ingestionResult] = await Promise.all([
+      // Get summary
+      serviceClient
+        .from('summaries')
+        .select('id, content, format, created_at, generated_by')
+        .eq('source_type', 'meeting')
+        .eq('source_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // Get decisions
+      serviceClient
+        .from('decisions')
+        .select('id, content, title, status, created_at')
+        .eq('meeting_id', id),
+      // Get tasks
+      serviceClient
+        .from('tasks')
+        .select('id, title, status, priority, due_date, metadata')
+        .eq('source_type', 'meeting')
+        .eq('source_id', id),
+      // Get ingestion job status
+      serviceClient
+        .from('ingestion_jobs')
+        .select('id, status, error_message, created_at, updated_at')
+        .eq('source_type', 'meeting')
+        .eq('source_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
     return NextResponse.json({
-      id: meeting.id,
-      title: meeting.title,
-      date: meeting.date,
-      durationSeconds: meeting.duration_seconds,
-      audioPath: meeting.audio_path,
-      hasRecording: !!meeting.audio_path,
-      transcriptionRaw: meeting.transcription_raw,
-      transcription: meeting.transcription_final,
-      hasTranscription: !!meeting.transcription_final,
-      speakers: meeting.speakers || [],
-      metadata: meeting.metadata || {},
-      project: meeting.project ? { id: meeting.project.id, name: meeting.project.name } : null,
-      summary: meeting.summaries?.[0]?.content || null,
-      decisions: meeting.decisions || [],
-      tasks: meeting.tasks || [],
-      processingStatus: ingestionJob?.status || null,
-      processingError: ingestionJob?.error_message || null,
-      createdAt: meeting.created_at,
-      updatedAt: meeting.updated_at,
+      meeting: {
+        id: meeting.id,
+        title: meeting.title,
+        scheduled_at: meeting.scheduled_at || meeting.date,
+        duration: meeting.duration_seconds ? Math.round(meeting.duration_seconds / 60) : null,
+        audio_path: meeting.audio_path,
+        transcription_raw: meeting.transcription_raw,
+        transcription_final: meeting.transcription_final,
+        status: meeting.status || 'scheduled',
+        meeting_type: meeting.meeting_type,
+        location: meeting.location,
+        metadata: meeting.metadata || {},
+        project: projectData ? { id: projectData.id, name: projectData.name } : null,
+      },
+      summary: summaryResult.data,
+      decisions: decisionsResult.data || [],
+      tasks: tasksResult.data || [],
+      processingStatus: ingestionResult.data?.status || null,
+      processingError: ingestionResult.data?.error_message || null,
     })
   } catch (error) {
     console.error('Meeting API error:', error)
