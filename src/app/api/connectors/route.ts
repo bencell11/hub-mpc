@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (type) {
-      query = query.eq('type', type)
+      // Normalize type to uppercase to match PostgreSQL enum
+      query = query.eq('type', type.toUpperCase())
     }
 
     const { data: connectors, error } = await query
