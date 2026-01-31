@@ -186,8 +186,27 @@ export default function ConnectorsPage() {
     }
   }
 
-  const handleDeleteConnector = (id: string) => {
-    setConnectors(prev => prev.filter(c => c.id !== id))
+  const handleDeleteConnector = async (id: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce connecteur ?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/connectors/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erreur lors de la suppression')
+      }
+
+      // Remove from local state after successful deletion
+      setConnectors(prev => prev.filter(c => c.id !== id))
+    } catch (err) {
+      console.error('Delete connector error:', err)
+      alert(err instanceof Error ? err.message : 'Erreur lors de la suppression')
+    }
   }
 
   const handleSyncConnector = async (id: string) => {
