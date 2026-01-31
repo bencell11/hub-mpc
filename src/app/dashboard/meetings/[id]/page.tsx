@@ -627,9 +627,9 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </CardHeader>
             <CardContent>
-              <div className="prose prose-sm max-w-none">
+              <div className="prose prose-sm max-w-none dark:prose-invert">
                 <div
-                  className="bg-white rounded-lg p-6 border"
+                  className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg p-6 border"
                   dangerouslySetInnerHTML={{
                     __html: summary.content
                       .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
