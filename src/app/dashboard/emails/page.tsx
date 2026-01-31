@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -19,92 +19,45 @@ import {
   Send,
   Archive,
   Trash2,
-  MoreVertical,
-  ChevronRight,
   Settings,
-  Link2
+  Link2,
+  Loader2,
+  ChevronRight
 } from 'lucide-react'
 
-// DEV MODE: Mock data
+// DEV MODE
 const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
-const MOCK_EMAILS = [
-  {
-    id: '1',
-    from: 'jean.dupont@client.fr',
-    fromName: 'Jean Dupont',
-    subject: 'RE: Plans révisés appartement Haussmann',
-    preview: 'Bonjour, je viens de recevoir les plans révisés et j\'ai quelques remarques concernant la disposition de la cuisine...',
-    receivedAt: new Date(Date.now() - 1800000).toISOString(),
-    isRead: false,
-    isStarred: true,
-    hasAttachments: true,
-    attachmentCount: 3,
-    project: 'Rénovation Appartement Haussmann',
-    labels: ['Client', 'Important'],
-  },
-  {
-    id: '2',
-    from: 'marie.martin@architecte.com',
-    fromName: 'Marie Martin',
-    subject: 'Validation des matériaux - Villa Côte d\'Azur',
-    preview: 'Suite à notre réunion de ce matin, voici la liste des matériaux validés pour la façade. Merci de confirmer...',
-    receivedAt: new Date(Date.now() - 7200000).toISOString(),
-    isRead: true,
-    isStarred: false,
-    hasAttachments: true,
-    attachmentCount: 1,
-    project: 'Villa Côte d\'Azur',
-    labels: ['Fournisseur'],
-  },
-  {
-    id: '3',
-    from: 'permis@mairie-paris.fr',
-    fromName: 'Service Urbanisme Paris',
-    subject: 'Notification - Dossier PC 75008-2024-001',
-    preview: 'Madame, Monsieur, nous vous informons que votre dossier de permis de construire a été instruit favorablement...',
-    receivedAt: new Date(Date.now() - 86400000).toISOString(),
-    isRead: true,
-    isStarred: true,
-    hasAttachments: true,
-    attachmentCount: 2,
-    project: 'Extension Maison Vincennes',
-    labels: ['Administratif', 'Important'],
-  },
-  {
-    id: '4',
-    from: 'contact@techcorp.io',
-    fromName: 'Sophie Bernard - TechCorp',
-    subject: 'Aménagement bureaux - Planning travaux',
-    preview: 'Bonjour, pourriez-vous nous envoyer le planning prévisionnel des travaux ? Nous devons organiser le déménagement...',
-    receivedAt: new Date(Date.now() - 172800000).toISOString(),
-    isRead: true,
-    isStarred: false,
-    hasAttachments: false,
-    attachmentCount: 0,
-    project: 'Bureaux Startup Tech',
-    labels: ['Client'],
-  },
-  {
-    id: '5',
-    from: 'factures@fournisseur.com',
-    fromName: 'Comptabilité Matériaux Pro',
-    subject: 'Facture N°2024-1234 - Livraison carrelage',
-    preview: 'Veuillez trouver ci-joint la facture relative à la livraison de carrelage effectuée le 15/01/2024...',
-    receivedAt: new Date(Date.now() - 259200000).toISOString(),
-    isRead: true,
-    isStarred: false,
-    hasAttachments: true,
-    attachmentCount: 1,
-    project: 'Rénovation Appartement Haussmann',
-    labels: ['Facture'],
-  },
-]
+interface Email {
+  id: string
+  from: {
+    email: string
+    name: string | null
+  }
+  to: string[]
+  cc: string[]
+  subject: string
+  preview: string
+  bodyText: string | null
+  bodyHtml: string | null
+  receivedAt: string
+  attachments: Array<{ name: string; size: number }>
+  project: { id: string; name: string } | null
+  metadata: { labels?: string[]; isRead?: boolean; isStarred?: boolean }
+}
 
-const CONNECTED_ACCOUNTS = [
-  { email: 'cabinet@architecte.fr', provider: 'Gmail', status: 'connected' },
-  { email: 'pro@outlook.com', provider: 'Outlook', status: 'syncing' },
-]
+interface Connector {
+  id: string
+  type: string
+  name: string
+  status: 'active' | 'inactive' | 'error' | 'syncing'
+  lastSyncAt: string | null
+}
+
+interface Project {
+  id: string
+  name: string
+}
 
 function getTimeAgo(dateString: string): string {
   const date = new Date(dateString)
@@ -120,7 +73,8 @@ function getTimeAgo(dateString: string): string {
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-function getInitials(name: string): string {
+function getInitials(name: string | null): string {
+  if (!name) return '?'
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
@@ -133,17 +87,135 @@ const labelColors: Record<string, string> = {
 }
 
 export default function EmailsPage() {
+  const [emails, setEmails] = useState<Email[]>([])
+  const [connectors, setConnectors] = useState<Connector[]>([])
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedFolder, setSelectedFolder] = useState('inbox')
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null)
+  const [showSyncModal, setShowSyncModal] = useState(false)
+  const [selectedProjectForSync, setSelectedProjectForSync] = useState<string>('')
 
-  const filteredEmails = MOCK_EMAILS.filter(email =>
-    email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    email.fromName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    email.preview.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Fetch emails, connectors, and projects
+  useEffect(() => {
+    fetchEmails()
+    fetchConnectors()
+    fetchProjects()
+  }, [])
 
-  const unreadCount = MOCK_EMAILS.filter(e => !e.isRead).length
+  const fetchProjects = async () => {
+    try {
+      const response = await fetch('/api/projects')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableProjects(data)
+        if (data.length > 0) {
+          setSelectedProjectForSync(data[0].id)
+        }
+      }
+    } catch {
+      // Ignore project fetch errors
+    }
+  }
+
+  const fetchEmails = async (search?: string) => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+
+      const response = await fetch(`/api/emails?${params}`)
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erreur lors du chargement')
+      }
+
+      const data = await response.json()
+      setEmails(data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchConnectors = async () => {
+    try {
+      const response = await fetch('/api/connectors?type=email')
+      if (response.ok) {
+        const data = await response.json()
+        setConnectors(data)
+      }
+    } catch {
+      // Ignore connector fetch errors
+    }
+  }
+
+  const handleSync = async () => {
+    if (connectors.length === 0 || !selectedProjectForSync) return
+
+    setSyncing(true)
+    setSyncResult(null)
+    setShowSyncModal(false)
+
+    try {
+      const response = await fetch('/api/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connectorId: connectors[0].id,
+          projectId: selectedProjectForSync,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSyncResult({
+          success: true,
+          message: `Synchronisation terminee: ${data.itemsCreated || 0} nouveaux emails importes, ${data.itemsUpdated || 0} mis a jour`,
+        })
+        await fetchEmails()
+        await fetchConnectors()
+      } else {
+        setSyncResult({
+          success: false,
+          message: data.error || 'Erreur lors de la synchronisation',
+        })
+      }
+    } catch (err) {
+      setSyncResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Erreur de connexion',
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleSearch = () => {
+    fetchEmails(searchQuery)
+  }
+
+  const filteredEmails = emails.filter(email => {
+    if (!searchQuery) return true
+    return (
+      email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (email.from.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      email.preview.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  })
+
+  const unreadCount = emails.filter(e => !e.metadata?.isRead).length
+
+  // Get unique projects from emails
+  const projects = [...new Set(emails.filter(e => e.project).map(e => e.project!.name))]
 
   return (
     <DashboardLayout user={DEV_USER}>
@@ -155,11 +227,24 @@ export default function EmailsPage() {
             <p className="text-muted-foreground">Centralisez et gérez les emails de vos projets</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
-              <RefreshCw className="mr-2 h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => connectors.length > 0 ? setShowSyncModal(true) : null}
+              disabled={syncing || connectors.length === 0}
+            >
+              {syncing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
               Synchroniser
             </Button>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.location.href = '/dashboard/settings/connectors'}
+            >
               <Link2 className="mr-2 h-4 w-4" />
               Connecter un compte
             </Button>
@@ -172,15 +257,23 @@ export default function EmailsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium">Comptes connectés:</span>
-                {CONNECTED_ACCOUNTS.map((account) => (
-                  <div key={account.email} className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${account.status === 'connected' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
-                    <span className="text-sm">{account.email}</span>
-                    <Badge variant="outline" className="text-xs">{account.provider}</Badge>
-                  </div>
-                ))}
+                {connectors.length === 0 ? (
+                  <span className="text-sm text-muted-foreground">Aucun compte email connecté</span>
+                ) : (
+                  connectors.map((connector) => (
+                    <div key={connector.id} className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${connector.status === 'active' ? 'bg-green-500' : connector.status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`} />
+                      <span className="text-sm">{connector.name}</span>
+                      <Badge variant="outline" className="text-xs">{connector.type}</Badge>
+                    </div>
+                  ))
+                )}
               </div>
-              <Button variant="ghost" size="sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.href = '/dashboard/settings/connectors'}
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </div>
@@ -234,20 +327,22 @@ export default function EmailsPage() {
               Corbeille
             </Button>
 
-            <div className="pt-4 border-t mt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2 px-3">PROJETS</p>
-              {['Rénovation Appartement Haussmann', 'Villa Côte d\'Azur', 'Bureaux Startup Tech'].map((project) => (
-                <Button
-                  key={project}
-                  variant="ghost"
-                  className="w-full justify-start text-xs h-8"
-                  onClick={() => setSearchQuery(project)}
-                >
-                  <div className="h-2 w-2 rounded-full bg-primary mr-2" />
-                  <span className="truncate">{project}</span>
-                </Button>
-              ))}
-            </div>
+            {projects.length > 0 && (
+              <div className="pt-4 border-t mt-4">
+                <p className="text-xs font-medium text-muted-foreground mb-2 px-3">PROJETS</p>
+                {projects.map((project) => (
+                  <Button
+                    key={project}
+                    variant="ghost"
+                    className="w-full justify-start text-xs h-8"
+                    onClick={() => setSearchQuery(project)}
+                  >
+                    <div className="h-2 w-2 rounded-full bg-primary mr-2" />
+                    <span className="truncate">{project}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Email list */}
@@ -261,6 +356,7 @@ export default function EmailsPage() {
                   className="pl-9"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
               <Button variant="outline" size="sm">
@@ -269,83 +365,206 @@ export default function EmailsPage() {
               </Button>
             </div>
 
+            {/* Loading state */}
+            {loading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {/* Error state */}
+            {error && (
+              <Card className="border-destructive">
+                <CardContent className="py-6 text-center text-destructive">
+                  <p>{error}</p>
+                  <Button variant="outline" className="mt-4" onClick={() => fetchEmails()}>
+                    Réessayer
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Email list */}
-            <Card>
-              <CardContent className="p-0 divide-y">
-                {filteredEmails.map((email) => (
-                  <div
-                    key={email.id}
-                    className={`flex items-start gap-4 p-4 hover:bg-muted/50 cursor-pointer transition-colors ${!email.isRead ? 'bg-blue-50/50' : ''}`}
-                    onClick={() => setSelectedEmail(email.id)}
-                  >
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className={!email.isRead ? 'bg-primary text-primary-foreground' : ''}>
-                        {getInitials(email.fromName)}
-                      </AvatarFallback>
-                    </Avatar>
+            {!loading && !error && (
+              <Card>
+                <CardContent className="p-0 divide-y">
+                  {filteredEmails.map((email) => {
+                    const isRead = email.metadata?.isRead ?? true
+                    const isStarred = email.metadata?.isStarred ?? false
+                    const labels = email.metadata?.labels ?? []
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-medium ${!email.isRead ? 'font-semibold' : ''}`}>
-                            {email.fromName}
-                          </span>
-                          {email.isStarred && <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          {email.hasAttachments && (
-                            <div className="flex items-center gap-1">
-                              <Paperclip className="h-3 w-3" />
-                              <span>{email.attachmentCount}</span>
+                    return (
+                      <div
+                        key={email.id}
+                        className={`flex items-start gap-4 p-4 hover:bg-muted/50 cursor-pointer transition-colors ${!isRead ? 'bg-blue-50/50' : ''}`}
+                        onClick={() => setSelectedEmail(email.id)}
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className={!isRead ? 'bg-primary text-primary-foreground' : ''}>
+                            {getInitials(email.from.name)}
+                          </AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-medium ${!isRead ? 'font-semibold' : ''}`}>
+                                {email.from.name || email.from.email}
+                              </span>
+                              {isStarred && <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />}
                             </div>
-                          )}
-                          <Clock className="h-3 w-3" />
-                          <span>{getTimeAgo(email.receivedAt)}</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              {email.attachments.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Paperclip className="h-3 w-3" />
+                                  <span>{email.attachments.length}</span>
+                                </div>
+                              )}
+                              <Clock className="h-3 w-3" />
+                              <span>{getTimeAgo(email.receivedAt)}</span>
+                            </div>
+                          </div>
+
+                          <p className={`text-sm mb-1 ${!isRead ? 'font-medium' : ''}`}>
+                            {email.subject}
+                          </p>
+
+                          <p className="text-sm text-muted-foreground truncate mb-2">
+                            {email.preview}
+                          </p>
+
+                          <div className="flex items-center gap-2">
+                            {email.project && (
+                              <Badge variant="outline" className="text-xs">
+                                {email.project.name}
+                              </Badge>
+                            )}
+                            {labels.map((label) => (
+                              <span
+                                key={label}
+                                className={`text-xs px-2 py-0.5 rounded-full ${labelColors[label] || 'bg-gray-100 text-gray-700'}`}
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
                         </div>
+
+                        <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100">
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </div>
+                    )
+                  })}
 
-                      <p className={`text-sm mb-1 ${!email.isRead ? 'font-medium' : ''}`}>
-                        {email.subject}
+                  {filteredEmails.length === 0 && (
+                    <div className="py-12 text-center">
+                      <Mail className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                      <h3 className="mt-4 font-medium">Aucun email trouvé</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {searchQuery ? 'Essayez avec d\'autres termes de recherche' : 'Connectez un compte email pour commencer'}
                       </p>
-
-                      <p className="text-sm text-muted-foreground truncate mb-2">
-                        {email.preview}
-                      </p>
-
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {email.project}
-                        </Badge>
-                        {email.labels.map((label) => (
-                          <span
-                            key={label}
-                            className={`text-xs px-2 py-0.5 rounded-full ${labelColors[label] || 'bg-gray-100 text-gray-700'}`}
-                          >
-                            {label}
-                          </span>
-                        ))}
-                      </div>
+                      {connectors.length === 0 && (
+                        <Button
+                          className="mt-4"
+                          onClick={() => window.location.href = '/dashboard/settings/connectors'}
+                        >
+                          <Link2 className="mr-2 h-4 w-4" />
+                          Connecter un compte
+                        </Button>
+                      )}
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
 
-                    <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100">
-                      <ChevronRight className="h-4 w-4" />
+        {/* Sync Result Toast */}
+        {syncResult && (
+          <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg max-w-md ${syncResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            <div className="flex items-start gap-3">
+              {syncResult.success ? (
+                <div className="text-green-600">&#10003;</div>
+              ) : (
+                <div className="text-red-600">&#10007;</div>
+              )}
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${syncResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                  {syncResult.success ? 'Synchronisation reussie' : 'Erreur de synchronisation'}
+                </p>
+                <p className={`text-sm ${syncResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                  {syncResult.message}
+                </p>
+              </div>
+              <button
+                onClick={() => setSyncResult(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                &#10005;
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sync Modal */}
+        {showSyncModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardContent className="pt-6">
+                <h3 className="text-lg font-semibold mb-4">Synchroniser les emails</h3>
+
+                {availableProjects.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-muted-foreground mb-4">
+                      Vous devez creer un projet avant de synchroniser des emails.
+                    </p>
+                    <Button onClick={() => window.location.href = '/dashboard/projects'}>
+                      Creer un projet
                     </Button>
                   </div>
-                ))}
-
-                {filteredEmails.length === 0 && (
-                  <div className="py-12 text-center">
-                    <Mail className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                    <h3 className="mt-4 font-medium">Aucun email trouvé</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {searchQuery ? 'Essayez avec d\'autres termes de recherche' : 'Connectez un compte email pour commencer'}
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Selectionnez le projet auquel associer les emails importes:
                     </p>
-                  </div>
+
+                    <select
+                      className="w-full px-3 py-2 border rounded-md mb-4"
+                      value={selectedProjectForSync}
+                      onChange={(e) => setSelectedProjectForSync(e.target.value)}
+                    >
+                      {availableProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => setShowSyncModal(false)}
+                      >
+                        Annuler
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        onClick={handleSync}
+                        disabled={!selectedProjectForSync}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Synchroniser
+                      </Button>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
           </div>
-        </div>
+        )}
       </div>
     </DashboardLayout>
   )

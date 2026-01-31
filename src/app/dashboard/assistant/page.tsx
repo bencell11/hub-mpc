@@ -209,12 +209,17 @@ export default function AssistantPage() {
       console.error('Chat error:', error)
       setIsConnected(false)
 
+      const errorMsg = error instanceof Error ? error.message : 'Erreur inconnue'
+
+      // Check if it's a workspace error
+      const isWorkspaceError = errorMsg.includes('workspace') || errorMsg.includes('No workspace')
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: error instanceof Error
-          ? `Désolé, une erreur s'est produite : ${error.message}\n\nVérifiez que vous êtes connecté et réessayez.`
-          : 'Désolé, une erreur s\'est produite. Veuillez réessayer.',
+        content: isWorkspaceError
+          ? `Votre compte n'a pas de workspace configuré. Cliquez sur "Créer mon workspace" ci-dessous pour résoudre ce problème.`
+          : `Désolé, une erreur s'est produite : ${errorMsg}\n\nVérifiez que vous êtes connecté et réessayez.`,
         timestamp: new Date(),
         error: true,
       }
@@ -222,6 +227,38 @@ export default function AssistantPage() {
       setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleFixWorkspace = async () => {
+    try {
+      const response = await fetch('/api/auth/fix-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceName: 'Mon Cabinet' }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setIsConnected(true)
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Workspace créé avec succès. Vous pouvez maintenant utiliser l'assistant.`,
+          timestamp: new Date(),
+        }])
+      } else {
+        throw new Error(data.error)
+      }
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Erreur lors de la création du workspace : ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        timestamp: new Date(),
+        error: true,
+      }])
     }
   }
 
@@ -420,14 +457,26 @@ export default function AssistantPage() {
                           <ThumbsDown className="h-3 w-3" />
                         </Button>
                         {message.error && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={handleRetry}
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={handleRetry}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </Button>
+                            {message.content.includes('workspace') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="ml-2"
+                                onClick={handleFixWorkspace}
+                              >
+                                Créer mon workspace
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
                     )}

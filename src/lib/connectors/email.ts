@@ -292,10 +292,106 @@ export class EmailConnector extends BaseConnector {
   }
 
   private async fetchImapEmails(): Promise<ParsedEmail[]> {
-    // IMAP implementation would require node-imap or similar
-    // This is a placeholder for the actual implementation
-    console.log('IMAP sync not yet implemented')
-    return []
+    const { ImapFlow } = await import('imapflow')
+    const { simpleParser } = await import('mailparser')
+
+    const emails: ParsedEmail[] = []
+
+    const client = new ImapFlow({
+      host: this.emailConfig.imapHost!,
+      port: this.emailConfig.imapPort || 993,
+      secure: true,
+      auth: {
+        user: this.emailCredentials.username!,
+        pass: this.emailCredentials.password!,
+      },
+      logger: false,
+    })
+
+    try {
+      await client.connect()
+
+      // Open INBOX
+      const lock = await client.getMailboxLock('INBOX')
+
+      try {
+        // Calculate date range
+        const syncDays = this.emailConfig.syncDays || 30
+        const afterDate = new Date()
+        afterDate.setDate(afterDate.getDate() - syncDays)
+
+        // Search for emails since afterDate
+        const searchResult = await client.search({
+          since: afterDate,
+        })
+
+        // Handle case where search returns false (no results) or array
+        const uids = searchResult === false ? [] : searchResult
+
+        // Limit to 50 emails
+        const limitedUids = uids.slice(-50)
+
+        for await (const message of client.fetch(limitedUids, {
+          envelope: true,
+          source: true,
+        })) {
+          try {
+            if (!message.source) continue
+            const parsed = await simpleParser(message.source)
+
+            // Helper to extract addresses from parsed fields
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const getAddresses = (field: any): Array<{ address?: string; name?: string }> => {
+              if (!field) return []
+              if (Array.isArray(field)) {
+                return field.flatMap(f => f?.value || [])
+              }
+              return field?.value || []
+            }
+
+            const fromAddresses = getAddresses(parsed.from)
+            const toAddresses = getAddresses(parsed.to)
+            const ccAddresses = getAddresses(parsed.cc)
+
+            emails.push({
+              id: message.uid.toString(),
+              from: {
+                address: fromAddresses[0]?.address || '',
+                name: fromAddresses[0]?.name,
+              },
+              to: toAddresses.map(addr => ({
+                address: addr.address || '',
+                name: addr.name,
+              })),
+              cc: ccAddresses.map(addr => ({
+                address: addr.address || '',
+                name: addr.name,
+              })),
+              subject: parsed.subject || '(No subject)',
+              bodyText: parsed.text || '',
+              bodyHtml: typeof parsed.html === 'string' ? parsed.html : undefined,
+              date: parsed.date || new Date(),
+              attachments: (parsed.attachments || []).map(att => ({
+                filename: att.filename || 'unnamed',
+                contentType: att.contentType,
+                size: att.size,
+              })),
+            })
+          } catch (parseError) {
+            console.error('Error parsing email:', parseError)
+          }
+        }
+      } finally {
+        lock.release()
+      }
+
+      await client.logout()
+    } catch (error) {
+      console.error('IMAP connection error:', error)
+      throw error
+    }
+
+    return emails
   }
 
   async getStatus(): Promise<{

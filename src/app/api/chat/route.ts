@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { chat, type ChatMessage } from '@/lib/ai/chat'
 import { registerBuiltinTools } from '@/lib/tools/builtin'
 
@@ -8,23 +8,45 @@ registerBuiltinTools()
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Check OpenAI API key first
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'Configuration manquante: OPENAI_API_KEY non défini' },
+        { status: 500 }
+      )
     }
 
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (!user) {
+      console.log('Chat API: No user found, auth error:', authError?.message)
+      return NextResponse.json(
+        { error: 'Non connecté. Veuillez vous connecter pour utiliser l\'assistant.' },
+        { status: 401 }
+      )
+    }
+
+    // Use service client to bypass RLS for workspace lookup
+    const serviceClient = await createServiceClient()
+
     // Get user's workspace
-    const { data: membershipData } = await supabase
+    const { data: membershipData, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
       .single()
 
+    if (membershipError) {
+      console.log('Chat API: Membership error:', membershipError.message)
+    }
+
     const membership = membershipData as { workspace_id: string } | null
     if (!membership) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Aucun workspace trouvé. Veuillez créer un compte avec un workspace.' },
+        { status: 400 }
+      )
     }
 
     const body = await request.json() as {

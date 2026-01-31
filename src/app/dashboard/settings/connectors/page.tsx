@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,21 +31,9 @@ interface Connector {
   type: 'EMAIL' | 'TELEGRAM' | 'CALENDAR' | 'STORAGE'
   name: string
   status: 'active' | 'inactive' | 'error'
-  lastSync?: string
+  lastSyncAt?: string
   config: Record<string, string>
 }
-
-// Données mockées pour la démo
-const MOCK_CONNECTORS: Connector[] = [
-  {
-    id: '1',
-    type: 'EMAIL',
-    name: 'Gmail Professionnel',
-    status: 'active',
-    lastSync: '2024-01-24T10:30:00Z',
-    config: { email: 'cabinet@architectes.fr', provider: 'gmail' }
-  },
-]
 
 const CONNECTOR_TYPES = [
   {
@@ -83,10 +71,40 @@ const CONNECTOR_TYPES = [
 ]
 
 export default function ConnectorsPage() {
-  const [connectors, setConnectors] = useState<Connector[]>(MOCK_CONNECTORS)
+  const [connectors, setConnectors] = useState<Connector[]>([])
   const [showAddModal, setShowAddModal] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch connectors on mount
+  useEffect(() => {
+    fetchConnectors()
+  }, [])
+
+  const fetchConnectors = async () => {
+    try {
+      setIsFetching(true)
+      const response = await fetch('/api/connectors')
+      if (response.ok) {
+        const data = await response.json()
+        // Map API response to local format
+        setConnectors(data.map((c: { id: string; type: string; name: string; status: string; lastSyncAt?: string; config?: Record<string, string> }) => ({
+          id: c.id,
+          type: c.type.toUpperCase(),
+          name: c.name,
+          status: c.status,
+          lastSyncAt: c.lastSyncAt,
+          config: c.config || {},
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to fetch connectors:', err)
+    } finally {
+      setIsFetching(false)
+    }
+  }
 
   // États du formulaire Email
   const [emailForm, setEmailForm] = useState({
@@ -107,28 +125,63 @@ export default function ConnectorsPage() {
 
   const handleAddConnector = async (type: string) => {
     setIsLoading(true)
+    setError(null)
 
-    // Simuler l'ajout
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      let config: Record<string, string | number>
+      let credentials: Record<string, string> = {}
 
-    const newConnector: Connector = {
-      id: Date.now().toString(),
-      type: type as Connector['type'],
-      name: type === 'EMAIL' ? emailForm.name : telegramForm.name,
-      status: 'active',
-      lastSync: new Date().toISOString(),
-      config: type === 'EMAIL'
-        ? { email: emailForm.email, provider: emailForm.provider }
-        : { chatId: telegramForm.chatId }
+      if (type === 'EMAIL') {
+        config = {
+          email: emailForm.email,
+          provider: emailForm.provider,
+        }
+
+        if (emailForm.provider === 'imap') {
+          config.imapHost = emailForm.imapHost
+          config.imapPort = parseInt(emailForm.imapPort) || 993
+          credentials = {
+            username: emailForm.email,
+            password: emailForm.password,
+          }
+        }
+      } else {
+        config = {
+          chatId: telegramForm.chatId,
+        }
+        credentials = {
+          botToken: telegramForm.botToken,
+        }
+      }
+
+      const response = await fetch('/api/connectors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: type.toLowerCase(),
+          name: type === 'EMAIL' ? emailForm.name : telegramForm.name,
+          config,
+          credentials,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Erreur lors de la création')
+      }
+
+      // Refresh connectors list
+      await fetchConnectors()
+      setShowAddModal(null)
+
+      // Reset forms
+      setEmailForm({ name: '', provider: 'gmail', email: '', password: '', imapHost: '', imapPort: '993' })
+      setTelegramForm({ name: '', botToken: '', chatId: '' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue')
+    } finally {
+      setIsLoading(false)
     }
-
-    setConnectors(prev => [...prev, newConnector])
-    setShowAddModal(null)
-    setIsLoading(false)
-
-    // Reset forms
-    setEmailForm({ name: '', provider: 'gmail', email: '', password: '', imapHost: '', imapPort: '993' })
-    setTelegramForm({ name: '', botToken: '', chatId: '' })
   }
 
   const handleDeleteConnector = (id: string) => {
@@ -141,7 +194,8 @@ export default function ConnectorsPage() {
     ))
   }
 
-  const formatLastSync = (date: string) => {
+  const formatLastSync = (date: string | undefined) => {
+    if (!date) return 'Jamais'
     const d = new Date(date)
     const now = new Date()
     const diffMs = now.getTime() - d.getTime()
@@ -170,7 +224,11 @@ export default function ConnectorsPage() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">Connecteurs actifs</h2>
 
-          {connectors.length === 0 ? (
+          {isFetching ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : connectors.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="py-8 text-center">
                 <Settings className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -207,11 +265,9 @@ export default function ConnectorsPage() {
                           <p className="text-sm text-muted-foreground">
                             {connector.config.email || connector.config.chatId}
                           </p>
-                          {connector.lastSync && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Dernière sync : {formatLastSync(connector.lastSync)}
-                            </p>
-                          )}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Dernière sync : {formatLastSync(connector.lastSyncAt)}
+                          </p>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -294,6 +350,11 @@ export default function ConnectorsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium">Nom du connecteur</label>
                   <Input
@@ -326,15 +387,23 @@ export default function ConnectorsPage() {
                 </div>
 
                 {emailForm.provider === 'gmail' ? (
-                  <div className="p-3 bg-blue-50 rounded-lg text-sm">
-                    <p className="font-medium text-blue-800">Connexion OAuth</p>
-                    <p className="text-blue-700 mt-1">
-                      Vous serez redirigé vers Google pour autoriser l'accès à votre compte.
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                    <p className="font-medium text-yellow-800">Configuration OAuth requise</p>
+                    <p className="text-yellow-700 mt-1">
+                      L'intégration Gmail OAuth nécessite une configuration Google Cloud Console.
+                      Pour l'instant, utilisez l'option <strong>Serveur IMAP</strong> avec un
+                      <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline ml-1">
+                        mot de passe d'application Google
+                      </a>.
                     </p>
-                    <Button variant="outline" size="sm" className="mt-2">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Se connecter avec Google
-                    </Button>
+                    <div className="mt-2 text-xs text-yellow-600">
+                      <p>Pour Gmail via IMAP:</p>
+                      <ul className="list-disc list-inside mt-1">
+                        <li>Serveur: imap.gmail.com</li>
+                        <li>Port: 993</li>
+                        <li>Activez IMAP dans les paramètres Gmail</li>
+                      </ul>
+                    </div>
                   </div>
                 ) : (
                   <>
