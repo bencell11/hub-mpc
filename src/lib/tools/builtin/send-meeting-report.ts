@@ -238,6 +238,15 @@ export const sendMeetingReportTool: ToolDefinition<SendMeetingReportInput, SendM
     const smtpHost = credentials.smtpHost || inferSmtpHost(credentials.imapHost)
     const smtpPort = credentials.smtpPort || 587
 
+    console.log('SMTP Configuration:', {
+      smtpHost,
+      smtpPort,
+      fromEmail: credentials.email,
+      imapHost: credentials.imapHost,
+      hasPassword: !!credentials.password,
+      passwordLength: credentials.password?.length || 0,
+    })
+
     if (!smtpHost) {
       return {
         success: false,
@@ -254,8 +263,16 @@ export const sendMeetingReportTool: ToolDefinition<SendMeetingReportInput, SendM
           user: credentials.email,
           pass: credentials.password,
         },
+        debug: true,
+        logger: true,
       })
 
+      // Verify connection first
+      console.log('Verifying SMTP connection...')
+      await transporter.verify()
+      console.log('SMTP connection verified successfully')
+
+      console.log('Sending email to:', input.recipients.join(', '))
       const info = await transporter.sendMail({
         from: credentials.email,
         to: input.recipients.join(', '),
@@ -263,6 +280,7 @@ export const sendMeetingReportTool: ToolDefinition<SendMeetingReportInput, SendM
         html: htmlContent,
         text: stripHtml(htmlContent),
       })
+      console.log('Email sent successfully:', info)
 
       const sentAt = new Date().toISOString()
 
