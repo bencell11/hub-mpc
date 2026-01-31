@@ -1,6 +1,7 @@
 import { toolRegistry } from '../registry'
 import { addNoteTool } from './add-note'
 import { createTaskTool } from './create-task'
+import { listEmailsTool } from './list-emails'
 import { searchEmailsTool } from './search-emails'
 import { semanticSearchTool } from './semantic-search'
 import { sendTelegramTool } from './send-telegram'
@@ -9,6 +10,7 @@ import { sendTelegramTool } from './send-telegram'
 export function registerBuiltinTools() {
   toolRegistry.register(addNoteTool)
   toolRegistry.register(createTaskTool)
+  toolRegistry.register(listEmailsTool)
   toolRegistry.register(searchEmailsTool)
   toolRegistry.register(semanticSearchTool)
   toolRegistry.register(sendTelegramTool)
@@ -16,6 +18,7 @@ export function registerBuiltinTools() {
 
 export { addNoteTool } from './add-note'
 export { createTaskTool } from './create-task'
+export { listEmailsTool } from './list-emails'
 export { searchEmailsTool } from './search-emails'
 export { semanticSearchTool } from './semantic-search'
 export { sendTelegramTool } from './send-telegram'
