@@ -48,13 +48,14 @@ export async function POST(
       return NextResponse.json({ error: 'No audio recording to transcribe' }, { status: 400 })
     }
 
-    // Download audio from storage
+    // Download audio from storage (stored in 'documents' bucket)
     const { data: audioData, error: downloadError } = await serviceClient.storage
-      .from('audio')
+      .from('documents')
       .download(meeting.audio_path)
 
     if (downloadError || !audioData) {
-      return NextResponse.json({ error: 'Could not download audio file' }, { status: 500 })
+      console.error('Audio download error:', downloadError)
+      return NextResponse.json({ error: 'Could not download audio file: ' + (downloadError?.message || 'Unknown error') }, { status: 500 })
     }
 
     // Convert to File object for OpenAI
