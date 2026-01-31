@@ -77,15 +77,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { type, name, config, credentials } = body
 
+    console.log('Connector creation request:', { type, name, configKeys: Object.keys(config || {}), hasCredentials: !!credentials })
+
     if (!type || !name) {
+      console.log('Validation failed:', { type, name })
       return NextResponse.json(
         { error: 'Type and name are required' },
         { status: 400 }
       )
     }
 
-    // Get user's workspace - RLS policy allows viewing own memberships
-    const { data: membership, error: membershipError } = await supabase
+    // Validate connector type matches PostgreSQL enum
+    const validTypes = ['EMAIL', 'TELEGRAM', 'CALENDAR', 'STORAGE', 'EXCEL', 'NOTION', 'SLACK']
+    if (!validTypes.includes(type.toUpperCase())) {
+      return NextResponse.json(
+        { error: `Invalid connector type: ${type}. Must be one of: ${validTypes.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Use service client for workspace lookup to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id, role')
       .eq('user_id', user.id)
@@ -93,8 +107,10 @@ export async function POST(request: NextRequest) {
 
     if (membershipError || !membership) {
       console.error('Workspace membership error:', membershipError)
-      return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
+      return NextResponse.json({ error: `No workspace found: ${membershipError?.message || 'No membership'}` }, { status: 400 })
     }
+
+    console.log('User membership:', { workspaceId: membership.workspace_id, role: membership.role })
 
     // Store credentials inside config (as _credentials) since the credentials column may not exist yet
     const fullConfig = {
@@ -102,10 +118,7 @@ export async function POST(request: NextRequest) {
       _credentials: credentials || {},
     }
 
-    // Use service client for connector creation after validating user membership
-    // RLS policy requires admin/owner but we've already validated the user is a workspace member
-    const serviceClient = await createServiceClient()
-
+    // Create connector using service client (already created above)
     const { data: connector, error } = await serviceClient
       .from('connectors')
       .insert({
