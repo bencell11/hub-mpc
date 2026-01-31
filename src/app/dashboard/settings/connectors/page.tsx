@@ -158,7 +158,7 @@ export default function ConnectorsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: type.toLowerCase(),
+          type: type.toUpperCase(), // Must match PostgreSQL enum: EMAIL, TELEGRAM, etc.
           name: type === 'EMAIL' ? emailForm.name : telegramForm.name,
           config,
           credentials,
