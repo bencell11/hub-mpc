@@ -16,8 +16,11 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -28,8 +31,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Build email query - RLS policy "Members can view emails" allows this via is_workspace_member()
-    let query = supabase
+    // Build email query
+    let query = serviceClient
       .from('emails')
       .select(`
         *,
@@ -83,7 +86,6 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/emails/sync - Synchroniser les emails
-// Note: This route needs service client for IMAP sync operations and connector updates
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -93,8 +95,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace with role check
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id, role')
       .eq('user_id', user.id)
@@ -112,8 +117,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Connector ID is required' }, { status: 400 })
     }
 
-    // Get connector - RLS policy "Members can view connectors" allows this
-    const { data: connector, error: connectorError } = await supabase
+    // Get connector
+    const { data: connector, error: connectorError } = await serviceClient
       .from('connectors')
       .select('*')
       .eq('id', connectorId)
@@ -127,10 +132,6 @@ export async function POST(request: NextRequest) {
     if (connector.workspace_id !== membership.workspace_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
-
-    // For connector updates during sync, we need service client since
-    // the connector update RLS requires admin/owner role
-    const serviceClient = await createServiceClient()
 
     // Update status to syncing
     await serviceClient

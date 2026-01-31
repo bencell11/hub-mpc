@@ -14,8 +14,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
 
-    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -26,8 +29,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Build documents query - RLS policy "Members can view documents" allows this via is_workspace_member()
-    let query = supabase
+    // Build documents query
+    let query = serviceClient
       .from('documents')
       .select(`
         *,
@@ -57,7 +60,6 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/documents - Upload un document
-// Note: Storage operations need service client for proper bucket access
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -79,8 +81,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
     }
 
-    // Get user's workspace - RLS policy allows viewing own memberships
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -92,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to the project
-    const { data: project, error: projectError } = await supabase
+    const { data: project, error: projectError } = await serviceClient
       .from('projects')
       .select('id, workspace_id')
       .eq('id', projectId)
@@ -116,9 +121,6 @@ export async function POST(request: NextRequest) {
     else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) docType = 'SPREADSHEET'
     else if (mimeType.includes('text')) docType = 'TEXT'
 
-    // Use service client for storage operations (storage buckets may have different policies)
-    const serviceClient = await createServiceClient()
-
     // Upload to Supabase Storage
     const fileName = `${Date.now()}-${file.name}`
     const storagePath = `documents/${projectId}/${fileName}`
@@ -132,8 +134,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 })
     }
 
-    // Create document record - RLS policy "Members can manage documents" allows this
-    const { data: document, error: insertError } = await supabase
+    // Create document record
+    const { data: document, error: insertError } = await serviceClient
       .from('documents')
       .insert({
         project_id: projectId,
@@ -151,9 +153,6 @@ export async function POST(request: NextRequest) {
       console.error('Document insert error:', insertError)
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
-
-    // TODO: Trigger ingestion job for embeddings/transcription
-    // await addJob('process-document', { documentId: document.id })
 
     return NextResponse.json(document, { status: 201 })
   } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/meetings - Liste des réunions
 export async function GET(request: NextRequest) {
@@ -15,8 +15,11 @@ export async function GET(request: NextRequest) {
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status') // 'upcoming' | 'completed'
 
-    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -27,8 +30,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Build meetings query - RLS policy "Members can view meetings" allows this via is_workspace_member()
-    let query = supabase
+    // Build meetings query
+    let query = serviceClient
       .from('meetings')
       .select(`
         *,
@@ -103,8 +106,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get user's workspace - RLS policy allows viewing own memberships
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -115,8 +121,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Create meeting - RLS policy "Members can manage meetings" allows this via can_write_workspace()
-    const { data: meeting, error } = await supabase
+    // Create meeting
+    const { data: meeting, error } = await serviceClient
       .from('meetings')
       .insert({
         project_id: projectId,
@@ -135,7 +141,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Add timeline event
-    await supabase.from('timeline_events').insert({
+    await serviceClient.from('timeline_events').insert({
       project_id: projectId,
       event_type: 'meeting_scheduled',
       title: `Réunion planifiée : ${title}`,

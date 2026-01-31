@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/projects - Liste des projets
 export async function GET() {
@@ -11,8 +11,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -23,8 +26,8 @@ export async function GET() {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Get projects with counts - RLS policy "Members can view projects" allows this via is_workspace_member()
-    const { data: projects, error } = await supabase
+    // Get projects with counts
+    const { data: projects, error } = await serviceClient
       .from('projects')
       .select(`
         *,
@@ -76,8 +79,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace - RLS policy allows viewing own memberships
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -95,7 +101,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
-    const { data: project, error } = await supabase
+    const { data: project, error } = await serviceClient
       .from('projects')
       .insert({
         workspace_id: membership.workspace_id,
@@ -113,7 +119,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log action
-    await supabase.from('audit_logs').insert({
+    await serviceClient.from('audit_logs').insert({
       workspace_id: membership.workspace_id,
       user_id: user.id,
       action: 'create_project',

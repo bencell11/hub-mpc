@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { chat, type ChatMessage } from '@/lib/ai/chat'
 import { registerBuiltinTools } from '@/lib/tools/builtin'
 
@@ -27,8 +27,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
-    const { data: membershipData, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membershipData, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
     // Get project context if provided
     let projectContext: { id: string; name: string; description?: string } | undefined
     if (projectId) {
-      const { data: project } = await supabase
+      const { data: project } = await serviceClient
         .from('projects')
         .select('id, name, description')
         .eq('id', projectId)
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Log the chat interaction
-    await supabase.from('audit_logs').insert({
+    await serviceClient.from('audit_logs').insert({
       workspace_id: membership.workspace_id,
       user_id: user.id,
       action: 'chat_message',

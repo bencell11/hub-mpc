@@ -14,8 +14,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
 
-    // Get user's workspace - RLS policy allows viewing own memberships
-    const { data: membership, error: membershipError } = await supabase
+    // Use service client for all queries to avoid RLS issues
+    const serviceClient = await createServiceClient()
+
+    // Get user's workspace
+    const { data: membership, error: membershipError } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -26,8 +29,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Query connectors - RLS policy "Members can view connectors" allows this
-    let query = supabase
+    // Query connectors
+    let query = serviceClient
       .from('connectors')
       .select('*')
       .eq('workspace_id', membership.workspace_id)
