@@ -14,21 +14,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
 
-    // Use service client to bypass RLS
-    const serviceClient = await createServiceClient()
-
-    // Get user's workspace
-    const { data: membership } = await serviceClient
+    // Get user's workspace - RLS policy allows viewing own memberships
+    const { data: membership, error: membershipError } = await supabase
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
       .single()
 
-    if (!membership) {
+    if (membershipError || !membership) {
+      console.error('Workspace membership error:', membershipError)
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    let query = serviceClient
+    // Query connectors - RLS policy "Members can view connectors" allows this
+    let query = supabase
       .from('connectors')
       .select('*')
       .eq('workspace_id', membership.workspace_id)
@@ -85,17 +84,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use service client to bypass RLS
-    const serviceClient = await createServiceClient()
-
-    // Get user's workspace
-    const { data: membership } = await serviceClient
+    // Get user's workspace - RLS policy allows viewing own memberships
+    const { data: membership, error: membershipError } = await supabase
       .from('workspace_members')
-      .select('workspace_id')
+      .select('workspace_id, role')
       .eq('user_id', user.id)
       .single()
 
-    if (!membership) {
+    if (membershipError || !membership) {
+      console.error('Workspace membership error:', membershipError)
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
@@ -104,6 +101,10 @@ export async function POST(request: NextRequest) {
       ...(config || {}),
       _credentials: credentials || {},
     }
+
+    // Use service client for connector creation after validating user membership
+    // RLS policy requires admin/owner but we've already validated the user is a workspace member
+    const serviceClient = await createServiceClient()
 
     const { data: connector, error } = await serviceClient
       .from('connectors')

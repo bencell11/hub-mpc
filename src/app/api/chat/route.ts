@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { chat, type ChatMessage } from '@/lib/ai/chat'
 import { registerBuiltinTools } from '@/lib/tools/builtin'
 
@@ -27,11 +27,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use service client to bypass RLS for workspace lookup
-    const serviceClient = await createServiceClient()
-
-    // Get user's workspace
-    const { data: membershipData, error: membershipError } = await serviceClient
+    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
+    const { data: membershipData, error: membershipError } = await supabase
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)

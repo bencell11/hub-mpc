@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 // GET /api/projects - Liste des projets
 export async function GET() {
@@ -11,21 +11,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Use service client to bypass RLS for workspace lookup
-    const serviceClient = await createServiceClient()
-
-    // Get user's workspace
-    const { data: membership } = await serviceClient
+    // Get user's workspace - RLS policy "Users can view their own memberships" allows this
+    const { data: membership, error: membershipError } = await supabase
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
       .single()
 
-    if (!membership) {
+    if (membershipError || !membership) {
+      console.error('Workspace membership error:', membershipError)
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Get projects with counts
+    // Get projects with counts - RLS policy "Members can view projects" allows this via is_workspace_member()
     const { data: projects, error } = await supabase
       .from('projects')
       .select(`
@@ -78,16 +76,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Use service client to bypass RLS for workspace lookup
-    const serviceClient = await createServiceClient()
-
-    const { data: membership } = await serviceClient
+    // Get user's workspace - RLS policy allows viewing own memberships
+    const { data: membership, error: membershipError } = await supabase
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
       .single()
 
-    if (!membership) {
+    if (membershipError || !membership) {
+      console.error('Workspace membership error:', membershipError)
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
