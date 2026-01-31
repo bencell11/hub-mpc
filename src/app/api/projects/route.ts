@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/projects - Liste des projets
 export async function GET() {
@@ -11,8 +11,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Use service client to bypass RLS for workspace lookup
+    const serviceClient = await createServiceClient()
+
     // Get user's workspace
-    const { data: membership } = await supabase
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -75,7 +78,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: membership } = await supabase
+    // Use service client to bypass RLS for workspace lookup
+    const serviceClient = await createServiceClient()
+
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)

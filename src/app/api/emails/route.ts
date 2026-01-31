@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/emails - Liste des emails
 export async function GET(request: NextRequest) {
@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const { data: membership } = await supabase
+    // Use service client to bypass RLS for workspace lookup
+    const serviceClient = await createServiceClient()
+
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -89,7 +92,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: membership } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -106,9 +112,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Connector ID is required' }, { status: 400 })
     }
 
-    // Get connector with service client to access credentials
-    const { createServiceClient } = await import('@/lib/supabase/server')
-    const serviceClient = await createServiceClient()
+    // serviceClient already created above for workspace lookup
 
     const { data: connector, error: connectorError } = await serviceClient
       .from('connectors')

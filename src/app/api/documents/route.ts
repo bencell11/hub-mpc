@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/documents - Liste des documents
 export async function GET(request: NextRequest) {
@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
 
-    const { data: membership } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    let query = supabase
+    let query = serviceClient
       .from('documents')
       .select(`
         *,
@@ -85,11 +88,14 @@ export async function POST(request: NextRequest) {
     else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) docType = 'SPREADSHEET'
     else if (mimeType.includes('text')) docType = 'TEXT'
 
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
     // Upload to Supabase Storage
     const fileName = `${Date.now()}-${file.name}`
     const storagePath = `documents/${projectId}/${fileName}`
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await serviceClient.storage
       .from('documents')
       .upload(storagePath, file)
 
@@ -99,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create document record
-    const { data: document, error: insertError } = await supabase
+    const { data: document, error: insertError } = await serviceClient
       .from('documents')
       .insert({
         project_id: projectId,

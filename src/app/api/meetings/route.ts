@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/meetings - Liste des réunions
 export async function GET(request: NextRequest) {
@@ -15,7 +15,10 @@ export async function GET(request: NextRequest) {
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status') // 'upcoming' | 'completed'
 
-    const { data: membership } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    let query = supabase
+    let query = serviceClient
       .from('meetings')
       .select(`
         *,
@@ -100,7 +103,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: meeting, error } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
+    const { data: meeting, error } = await serviceClient
       .from('meetings')
       .insert({
         project_id: projectId,

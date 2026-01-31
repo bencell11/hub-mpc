@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/connectors - Liste des connecteurs
 export async function GET(request: NextRequest) {
@@ -14,8 +14,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
 
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
     // Get user's workspace
-    const { data: membership } = await supabase
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    let query = supabase
+    let query = serviceClient
       .from('connectors')
       .select('*')
       .eq('workspace_id', membership.workspace_id)
@@ -82,8 +85,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use service client to bypass RLS
+    const serviceClient = await createServiceClient()
+
     // Get user's workspace
-    const { data: membership } = await supabase
+    const { data: membership } = await serviceClient
       .from('workspace_members')
       .select('workspace_id')
       .eq('user_id', user.id)
@@ -92,10 +98,6 @@ export async function POST(request: NextRequest) {
     if (!membership) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
-
-    // Use service client to store data
-    const { createServiceClient } = await import('@/lib/supabase/server')
-    const serviceClient = await createServiceClient()
 
     // Store credentials inside config (as _credentials) since the credentials column may not exist yet
     const fullConfig = {
