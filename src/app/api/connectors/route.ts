@@ -87,9 +87,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate connector type matches PostgreSQL enum
+    // Validate and normalize connector type to match PostgreSQL enum (uppercase)
     const validTypes = ['EMAIL', 'TELEGRAM', 'CALENDAR', 'STORAGE', 'EXCEL', 'NOTION', 'SLACK']
-    if (!validTypes.includes(type.toUpperCase())) {
+    const normalizedType = type.toUpperCase()
+    if (!validTypes.includes(normalizedType)) {
       return NextResponse.json(
         { error: `Invalid connector type: ${type}. Must be one of: ${validTypes.join(', ')}` },
         { status: 400 }
@@ -119,11 +120,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create connector using service client (already created above)
+    console.log('Inserting connector:', { workspace_id: membership.workspace_id, type: normalizedType, name, status: 'inactive' })
+
     const { data: connector, error } = await serviceClient
       .from('connectors')
       .insert({
         workspace_id: membership.workspace_id,
-        type,
+        type: normalizedType,
         name,
         status: 'inactive',
         config: fullConfig,
@@ -133,7 +136,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Connector create error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: `Failed to create connector: ${error.message}` }, { status: 500 })
     }
 
     return NextResponse.json({
