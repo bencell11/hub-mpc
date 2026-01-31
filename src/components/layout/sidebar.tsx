@@ -13,6 +13,7 @@ import {
   Plug,
   ChevronLeft,
   ChevronRight,
+  Lightbulb,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ const navigation = [
   { name: 'Réunions', href: '/dashboard/meetings', icon: Calendar },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
   { name: 'Assistant', href: '/dashboard/assistant', icon: MessageSquare },
+  { name: 'Ressources IA', href: '/dashboard/resources', icon: Lightbulb },
 ]
 
 const secondaryNavigation = [
