@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         workspace_id: membership.workspace_id,
         type: normalizedType,
         name,
-        status: 'inactive',
+        status: 'active', // Set active by default so tools can use it immediately
         config: fullConfig,
       })
       .select()

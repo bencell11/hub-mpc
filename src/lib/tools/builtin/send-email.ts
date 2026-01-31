@@ -43,7 +43,7 @@ export const sendEmailTool: ToolDefinition<SendEmailInput, SendEmailOutput> = {
       }
     }
 
-    // Parse credentials
+    // Parse credentials from config._credentials (where they are stored)
     let credentials: {
       email: string
       password: string
@@ -53,7 +53,15 @@ export const sendEmailTool: ToolDefinition<SendEmailInput, SendEmailOutput> = {
     }
 
     try {
-      credentials = JSON.parse(connector.credentials_encrypted) as typeof credentials
+      // Credentials are stored in config._credentials
+      const config = connector.config as { _credentials?: typeof credentials }
+      if (!config?._credentials) {
+        return {
+          success: false,
+          error: 'No email credentials found. Please reconfigure the email connector.',
+        }
+      }
+      credentials = config._credentials
     } catch {
       return {
         success: false,

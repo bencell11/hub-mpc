@@ -140,9 +140,11 @@ export default function ConnectorsPage() {
         if (emailForm.provider === 'imap') {
           config.imapHost = emailForm.imapHost
           config.imapPort = parseInt(emailForm.imapPort) || 993
+          // Store all credentials needed for both IMAP and SMTP
           credentials = {
-            username: emailForm.email,
+            email: emailForm.email,
             password: emailForm.password,
+            imapHost: emailForm.imapHost,
           }
         }
       } else {
