@@ -353,21 +353,54 @@ export default function MeetingsPage() {
                           {meeting.status === 'completed' && (
                             <>
                               {meeting.hasRecording && (
-                                <Button variant="outline" size="sm">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/dashboard/meetings/${meeting.id}`)
+                                  }}
+                                >
                                   <Play className="mr-2 h-3 w-3" />
                                   Écouter
                                 </Button>
                               )}
                               {meeting.hasTranscription && (
-                                <Button variant="outline" size="sm">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/dashboard/meetings/${meeting.id}`)
+                                  }}
+                                >
                                   <FileText className="mr-2 h-3 w-3" />
                                   Transcription
                                 </Button>
                               )}
                               {meeting.hasSummary && (
-                                <Button variant="outline" size="sm">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/dashboard/meetings/${meeting.id}`)
+                                  }}
+                                >
                                   <Download className="mr-2 h-3 w-3" />
                                   Exporter
+                                </Button>
+                              )}
+                              {!meeting.hasRecording && !meeting.hasTranscription && !meeting.hasSummary && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/dashboard/meetings/${meeting.id}`)
+                                  }}
+                                >
+                                  Voir détails
                                 </Button>
                               )}
                             </>
@@ -377,14 +410,36 @@ export default function MeetingsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => router.push(`/dashboard/meetings/${meeting.id}`)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  router.push(`/dashboard/meetings/${meeting.id}`)
+                                }}
                               >
                                 <Mic className="mr-2 h-3 w-3" />
                                 Enregistrer
                               </Button>
-                              <Button size="sm">
-                                Rejoindre
-                              </Button>
+                              {meeting.location && meeting.type === 'video' ? (
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    window.open(meeting.location!, '_blank')
+                                  }}
+                                >
+                                  <Video className="mr-2 h-3 w-3" />
+                                  Rejoindre
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/dashboard/meetings/${meeting.id}`)
+                                  }}
+                                >
+                                  Voir détails
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>
