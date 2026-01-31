@@ -30,15 +30,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
-    // Build meetings query
+    // Build meetings query - don't join summaries directly (no FK relation)
     let query = serviceClient
       .from('meetings')
       .select(`
         *,
-        project:projects(id, name),
-        summary:summaries(content, format)
+        project:projects(id, name)
       `)
-      .order('date', { ascending: status === 'upcoming' })
+      .order('scheduled_at', { ascending: status === 'upcoming', nullsFirst: false })
 
     if (projectId) {
       query = query.eq('project_id', projectId)
@@ -46,9 +45,9 @@ export async function GET(request: NextRequest) {
 
     const now = new Date().toISOString()
     if (status === 'upcoming') {
-      query = query.gte('date', now)
+      query = query.gte('scheduled_at', now)
     } else if (status === 'completed') {
-      query = query.lt('date', now)
+      query = query.lt('scheduled_at', now)
     }
 
     const { data: meetings, error } = await query
@@ -58,23 +57,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Transform data
-    const transformedMeetings = meetings?.map(m => ({
-      id: m.id,
-      title: m.title,
-      date: m.date,
-      durationSeconds: m.duration_seconds,
-      audioPath: m.audio_path,
-      hasRecording: !!m.audio_path,
-      hasTranscription: !!m.transcription_final,
-      transcription: m.transcription_final,
-      speakers: m.speakers || [],
-      project: m.project,
-      summary: m.summary?.[0]?.content,
-      metadata: m.metadata,
-      createdAt: m.created_at,
-      status: new Date(m.date) > new Date() ? 'upcoming' : 'completed',
-    })) || []
+    // Get summaries separately
+    const meetingIds = (meetings || []).map(m => m.id)
+    const { data: summaries } = meetingIds.length > 0
+      ? await serviceClient
+          .from('summaries')
+          .select('source_id, content')
+          .eq('source_type', 'meeting')
+          .in('source_id', meetingIds)
+      : { data: [] }
+
+    const summaryMap = new Map((summaries || []).map(s => [s.source_id, s.content]))
+
+    // Transform data to match frontend interface
+    const transformedMeetings = (meetings || []).map(m => {
+      const scheduledAt = m.scheduled_at || m.date
+      const meetingDate = scheduledAt ? new Date(scheduledAt) : new Date()
+      const meetingStatus = m.status || (meetingDate > new Date() ? 'upcoming' : 'completed')
+
+      // Parse metadata for attendees, type, location
+      const metadata = m.metadata || {}
+      const attendees = metadata.attendees || []
+      const meetingType = m.meeting_type || metadata.type || 'on-site'
+      const location = m.location || metadata.location || null
+
+      return {
+        id: m.id,
+        title: m.title,
+        date: meetingDate.toISOString().split('T')[0],
+        time: meetingDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        duration: m.duration_seconds ? Math.round(m.duration_seconds / 60) : 60,
+        type: meetingType,
+        location,
+        project: m.project,
+        attendees: attendees.map((a: { name: string; role?: string }) => ({
+          name: a.name || 'Participant',
+          role: a.role || 'Participant',
+        })),
+        hasRecording: !!m.audio_path,
+        hasTranscription: !!m.transcription_final,
+        hasSummary: summaryMap.has(m.id),
+        status: meetingStatus === 'completed' ? 'completed' : 'upcoming',
+        summary: summaryMap.get(m.id)?.substring(0, 200),
+      }
+    })
 
     return NextResponse.json(transformedMeetings)
   } catch (error) {
@@ -121,15 +147,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 400 })
     }
 
+    // Combine date and time if provided
+    let scheduledAt: string
+    if (body.time) {
+      scheduledAt = new Date(`${date}T${body.time}`).toISOString()
+    } else {
+      scheduledAt = new Date(date).toISOString()
+    }
+
     // Create meeting
     const { data: meeting, error } = await serviceClient
       .from('meetings')
       .insert({
         project_id: projectId,
         title,
-        date: new Date(date).toISOString(),
-        duration_seconds: durationMinutes ? durationMinutes * 60 : null,
-        metadata: { type, location, attendees },
+        date: scheduledAt,
+        scheduled_at: scheduledAt,
+        duration_seconds: (body.duration || durationMinutes || 60) * 60,
+        meeting_type: type || 'video',
+        location: location || null,
+        status: 'scheduled',
+        metadata: { attendees: attendees || [] },
         created_by: user.id,
       })
       .select()
