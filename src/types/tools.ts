@@ -142,6 +142,13 @@ export const SendTelegramInputSchema = z.object({
   message: z.string().min(1).max(4096),
 })
 
+export const SendEmailInputSchema = z.object({
+  to: z.string().email().describe('Email address of the recipient'),
+  subject: z.string().min(1).max(200).describe('Email subject'),
+  body: z.string().min(1).describe('Email body content (supports HTML)'),
+  replyTo: z.string().email().optional().describe('Reply-to email address'),
+})
+
 export const ExportSummaryInputSchema = z.object({
   meetingId: z.string().uuid(),
   format: z.enum(['pdf', 'markdown', 'html']),
@@ -199,5 +206,6 @@ export type CreateTaskInput = z.infer<typeof CreateTaskInputSchema>
 export type SearchEmailsInput = z.infer<typeof SearchEmailsInputSchema>
 export type SearchDocumentsInput = z.infer<typeof SearchDocumentsInputSchema>
 export type SendTelegramInput = z.infer<typeof SendTelegramInputSchema>
+export type SendEmailInput = z.infer<typeof SendEmailInputSchema>
 export type ExportSummaryInput = z.infer<typeof ExportSummaryInputSchema>
 export type SemanticSearchInput = z.infer<typeof SemanticSearchInputSchema>

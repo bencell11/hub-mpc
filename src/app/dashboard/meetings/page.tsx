@@ -24,8 +24,10 @@ import {
   CheckCircle2,
   MoreVertical,
   Loader2,
-  X
+  X,
+  ChevronRight,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 // DEV MODE
 const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
@@ -79,6 +81,7 @@ function getInitials(name: string): string {
 }
 
 export default function MeetingsPage() {
+  const router = useRouter()
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -279,7 +282,11 @@ export default function MeetingsPage() {
               const TypeIcon = typeConfig[meeting.type]?.icon || MapPin
               const typeStyle = typeConfig[meeting.type] || typeConfig['on-site']
               return (
-                <Card key={meeting.id} className="hover:shadow-md transition-shadow">
+                <Card
+                  key={meeting.id}
+                  className="hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => router.push(`/dashboard/meetings/${meeting.id}`)}
+                >
                   <CardContent className="p-6">
                     <div className="flex items-start gap-4">
                       {/* Date badge */}
@@ -342,7 +349,7 @@ export default function MeetingsPage() {
                         )}
 
                         {/* Actions */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           {meeting.status === 'completed' && (
                             <>
                               {meeting.hasRecording && (
@@ -367,7 +374,11 @@ export default function MeetingsPage() {
                           )}
                           {meeting.status === 'upcoming' && (
                             <>
-                              <Button variant="outline" size="sm">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => router.push(`/dashboard/meetings/${meeting.id}`)}
+                              >
                                 <Mic className="mr-2 h-3 w-3" />
                                 Enregistrer
                               </Button>
@@ -379,9 +390,19 @@ export default function MeetingsPage() {
                         </div>
                       </div>
 
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // TODO: Open menu
+                          }}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
