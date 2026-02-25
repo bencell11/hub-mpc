@@ -1,18 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// DEV MODE: Skip authentication
-const DEV_SKIP_AUTH = true
-
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
-
-  // Skip auth check in dev mode
-  if (DEV_SKIP_AUTH) {
-    return supabaseResponse
-  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,12 +27,22 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
+  // Refresh session if expired - IMPORTANT: this must be called
+  // to keep the session cookie alive
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect dashboard routes
+  // Redirect authenticated users away from auth pages (except reset-password)
+  if (user && request.nextUrl.pathname.startsWith('/auth/')) {
+    if (!request.nextUrl.pathname.startsWith('/auth/reset-password')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  }
+
+  // Protect dashboard routes - redirect to login if not authenticated
   if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'

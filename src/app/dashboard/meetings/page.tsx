@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,8 +30,6 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
-// DEV MODE
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Attendee {
   name: string
@@ -81,6 +80,7 @@ function getInitials(name: string): string {
 }
 
 export default function MeetingsPage() {
+  const { user } = useUser()
   const router = useRouter()
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -144,7 +144,7 @@ export default function MeetingsPage() {
   const totalRecordings = meetings.filter(m => m.hasRecording).length
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

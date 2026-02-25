@@ -28,8 +28,17 @@ export default function LoginPage() {
       })
 
       if (error) {
-        setError(error.message)
+        // Translate common Supabase errors to French
+        if (error.message === 'Invalid login credentials') {
+          setError('Email ou mot de passe incorrect')
+        } else if (error.message.includes('Email not confirmed')) {
+          setError('Veuillez confirmer votre email avant de vous connecter')
+        } else {
+          setError(error.message)
+        }
       } else {
+        // Force a full page navigation to ensure cookies are sent to the server
+        router.refresh()
         router.push('/dashboard')
       }
     } catch {

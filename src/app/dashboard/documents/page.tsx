@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,8 +31,6 @@ import {
   X
 } from 'lucide-react'
 
-// DEV MODE
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Document {
   id: string
@@ -83,6 +82,7 @@ function getTimeAgo(dateString: string): string {
 }
 
 export default function DocumentsPage() {
+  const { user } = useUser()
   const [documents, setDocuments] = useState<Document[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -167,7 +167,7 @@ export default function DocumentsPage() {
   }, [])
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

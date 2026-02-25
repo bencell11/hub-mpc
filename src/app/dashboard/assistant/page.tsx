@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,8 +34,6 @@ import {
   WifiOff
 } from 'lucide-react'
 
-// DEV MODE: Mock user (à remplacer par auth réelle)
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Message {
   id: string
@@ -118,6 +117,7 @@ const typeColors = {
 }
 
 export default function AssistantPage() {
+  const { user } = useUser()
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -290,7 +290,7 @@ export default function AssistantPage() {
   }
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="flex h-[calc(100vh-8rem)] gap-6">
         {/* Main chat area */}
         <div className="flex-1 flex flex-col">

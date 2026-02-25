@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +26,6 @@ import {
   ChevronRight
 } from 'lucide-react'
 
-// DEV MODE
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Email {
   id: string
@@ -87,6 +86,7 @@ const labelColors: Record<string, string> = {
 }
 
 export default function EmailsPage() {
+  const { user } = useUser()
   const [emails, setEmails] = useState<Email[]>([])
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [availableProjects, setAvailableProjects] = useState<Project[]>([])
@@ -218,7 +218,7 @@ export default function EmailsPage() {
   const projects = [...new Set(emails.filter(e => e.project).map(e => e.project!.name))]
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

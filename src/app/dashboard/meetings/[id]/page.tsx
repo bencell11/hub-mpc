@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, use } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +35,6 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Meeting {
   id: string
@@ -69,6 +69,7 @@ const typeConfig: Record<string, { icon: React.ComponentType<{ className?: strin
 }
 
 export default function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { user } = useUser()
   const resolvedParams = use(params)
   const [meeting, setMeeting] = useState<Meeting | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -352,7 +353,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
 
   if (loading) {
     return (
-      <DashboardLayout user={DEV_USER}>
+      <DashboardLayout user={user || undefined}>
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -362,7 +363,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
 
   if (error || !meeting) {
     return (
-      <DashboardLayout user={DEV_USER}>
+      <DashboardLayout user={user || undefined}>
         <div className="text-center py-12">
           <AlertCircle className="mx-auto h-12 w-12 text-destructive" />
           <h2 className="mt-4 text-lg font-semibold">{error || 'Réunion non trouvée'}</h2>
@@ -380,7 +381,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   const hasTranscription = !!meeting.transcription_final
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">

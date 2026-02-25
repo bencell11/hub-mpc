@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,8 +24,6 @@ import {
   ExternalLink
 } from 'lucide-react'
 
-// DEV MODE
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Connector {
   id: string
@@ -71,6 +70,7 @@ const CONNECTOR_TYPES = [
 ]
 
 export default function ConnectorsPage() {
+  const { user } = useUser()
   const [connectors, setConnectors] = useState<Connector[]>([])
   const [showAddModal, setShowAddModal] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -229,7 +229,7 @@ export default function ConnectorsPage() {
   }
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

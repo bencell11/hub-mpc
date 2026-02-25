@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { useUser } from '@/hooks/use-user'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -25,7 +26,6 @@ import {
   Image,
 } from 'lucide-react'
 
-const DEV_USER = { name: 'Développeur', email: 'dev@example.com' }
 
 interface Tool {
   id: string
@@ -378,6 +378,7 @@ const resourceTypeConfig = {
 }
 
 export default function ResourcesPage() {
+  const { user } = useUser()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [expandedTool, setExpandedTool] = useState<string | null>(null)
@@ -392,7 +393,7 @@ export default function ResourcesPage() {
   const recommendedTools = AI_TOOLS.filter(t => t.recommended)
 
   return (
-    <DashboardLayout user={DEV_USER}>
+    <DashboardLayout user={user || undefined}>
       <div className="space-y-8">
         {/* Header */}
         <div>
